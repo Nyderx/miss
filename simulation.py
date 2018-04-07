@@ -1,21 +1,25 @@
 import simpy
 
+from utils import *
+from random import randint
 
 class BusStop:
-    def __init__(self, id, name):
+    def __init__(self, id, name, x, y):
         self.id = id
         self.name = name
-        self.waitingPeople = []
+        self.x = x
+        self.y = y
+        self.waiting_people = []
 
-    def addPerson(self, person):
-        self.waitingPeople.append(person)
+    def add_person(self, person):
+        self.waiting_people.append(person)
 
 
-    def takePassengers(self, bus):
-        enteringPeople = [person for person in self.waitingPeople if person.wantsToEnter(bus)][:bus.freePlaces()]
-        self.waitingPeople = [person for person in self.waitingPeople if not person in enteringPeople]
+    def take_passengers(self, bus):
+        entering_people = [person for person in self.waiting_people if person.wants_to_enter(bus)][:bus.free_places()]
+        self.waiting_people = [person for person in self.waiting_people if not person in entering_people]
 
-        return enteringPeople
+        return entering_people
 
 
 class Person:
@@ -24,73 +28,112 @@ class Person:
         self.source = source
         self.destination = destination
 
-    def enterBus(self, bus, busStop):
+    def enter_bus(self, bus, busStop):
         print("{} entering bus {} at bus stop {}".format(self.id, bus.id, busStop.name))
 
-    def leaveBus(self, bus, busStop):
+    def leave_bus(self, bus, busStop):
         print("{} leaving bus {} at bus stop {}".format(self.id, bus.id, busStop.name))
 
-    def wantsToEnter(self, bus):
+    def wants_to_enter(self, bus):
         return True
 
-    def wantsToLeave(self, busStop):
+    def wants_to_leave(self, busStop):
         return busStop is self.destination
 
 
-
+# route_times format - [time_of_staying_on_first_stop, time between 0 and 1 stop, ..., time_of_staying_on_last_stop]
 class Bus:
-    def __init__(self, id, capacity, route):
+    def __init__(self, id, capacity, route, route_times):
         self.id = id
         self.capacity = capacity
         self.route = route
-        self.lastStopNumber = len(route) - 1
+        self.route_times = route_times
+
+        self.x = self.route[0].x + STOP_WIDTH / 2 - BUS_WIDTH / 2
+        self.y = self.route[0].y - BUS_HEIGHT
+
+        self.last_stop_number = len(route) - 1
 
         self.passengers = []
-        self.currentStop = 0
-        self.currentDirection = 1
+        self.current_stop = 0
+        self.current_direction = 1
 
-    def freePlaces(self):
+    def free_places(self):
         return self.capacity - len(self.passengers)
 
     def run(self, env):
         while True:
+            # leave people on current stop
+            leaving_people = [passenger for passenger in self.passengers if passenger.wants_to_leave(self.current_stop)]
+            for person in leaving_people:
+                person.leave_bus(self, self.route[self.current_stop])
+            self.passengers = [passenger for passenger in self.passengers if not passenger.wants_to_leave(self.current_stop)]
+            yield env.timeout(1 * FACTOR)
+
+            # if its 0 or last stop - wait for a while
+            if self.current_stop == 0:
+                yield env.timeout(self.route_times[0] * FACTOR)
+            elif self.current_stop == self.last_stop_number:
+                yield env.timeout(self.route_times[len(self.route_times) - 1] * FACTOR)
+
             # take people from current step
-            enteringPeople = self.route[self.currentStop].takePassengers(self)
-            for person in enteringPeople:
-                person.enterBus(self, self.route[self.currentStop])
-            self.passengers += enteringPeople
+            entering_people = self.route[self.current_stop].take_passengers(self)
+            for person in entering_people:
+                person.enter_bus(self, self.route[self.current_stop])
+            self.passengers += entering_people
+            yield env.timeout(1 * FACTOR)
 
             # calculate move to next stop
-            nextStop = self.currentStop + self.currentDirection
+            next_stop = self.current_stop + self.current_direction
+
+            #move to start of road
+            self.x = self.route[self.current_stop].x + STOP_WIDTH/2
+            self.y = self.route[self.current_stop].y + STOP_HEIGHT/2
 
             # move
-            print("Moving from {} to {} stop, free places {}".format(self.route[self.currentStop].name, self.route[nextStop].name, self.capacity - len(self.passengers)))
-            yield env.timeout(3)
-            self.currentStop = nextStop
+            print("Moving from {} to {} stop, free places {}".format(self.route[self.current_stop].name, self.route[next_stop].name, self.capacity - len(self.passengers)))
+            time = self.route_times[max(next_stop, self.current_stop)]
+            next_stop_object = self.route[next_stop]
+            current_stop_object = self.route[self.current_stop]
+            dx = (next_stop_object.x - current_stop_object.x)/time
+            dy = (next_stop_object.y - current_stop_object.y)/time
+            for i in range(time):
+                self.x = self.x + dx
+                self.y = self.y + dy
+                yield env.timeout(1)
 
-            # leave people on current stop
-            leavingPeople = [passenger for passenger in self.passengers if passenger.wantsToLeave(self.currentStop)]
-            for person in leavingPeople:
-                person.leaveBus(self, self.route[self.currentStop])
-            self.passengers = [passenger for passenger in self.passengers if not passenger.wantsToLeave(self.currentStop)]
+            self.x = next_stop_object.x + STOP_WIDTH/2 - BUS_WIDTH/2
+            self.y = next_stop_object.y - BUS_HEIGHT
+            self.current_stop = next_stop
+
 
             # change direction if needed
-            if self.currentStop == 0 or self.currentStop == self.lastStopNumber:
-                self.currentDirection *= -1
+            if self.current_stop == 0 or self.current_stop == self.last_stop_number:
+                self.current_direction *= -1
+            yield env.timeout(1)
 
-busStop1 = BusStop(0, "AGH")
-busStop2 = BusStop(1, "Czarnowiejska")
+class PeopleSpawner():
+    def __init__(self, routes):
+        self.routes = routes
 
-person1 = Person("Wojtek", busStop1.id, busStop2.id)
-person2 = Person("Krzysiek", busStop2.id, busStop1.id)
+    def run(self, env):
+        while True:
+            for route in self.routes:
+                start_stop = randint(0, len(route) - 1)
+                last_stop = randint(0, len(route) - 1)
+
+                person = Person("name", start_stop, last_stop)
+                route[start_stop].add_person(person)
+                yield env.timeout(1 * FACTOR)
 
 
-busStop1.addPerson(person1)
-busStop2.addPerson(person2)
 
-route = [busStop1, busStop2]
+def run_simulation(buses, routes):
+    env = simpy.rt.RealtimeEnvironment(factor=1/FACTOR)
+    spawner = PeopleSpawner(routes)
 
-env = simpy.Environment()
-env.process(Bus("Happy bus", 10, route).run(env))
+    for bus in buses:
+        env.process(bus.run(env))
 
-env.run(until=15)
+    env.process(spawner.run(env))
+    env.run(1000)
