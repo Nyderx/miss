@@ -99,14 +99,21 @@ bus_stop3 = BusStop(0, "Kawiory", 500, 500)
 bus_stop4 = BusStop(0, "Piaski", 400, 50)
 bus_stop5 = BusStop(0, "Bieżanowska", 400, 500)
 
+stops = [bus_stop1, bus_stop2, bus_stop3, bus_stop4, bus_stop5]
 
 route1 = (bus_stop1, bus_stop2, bus_stop3)
-route2 = (bus_stop4, bus_stop5)
+route2 = (bus_stop4, bus_stop2, bus_stop5)
+
+routes = [route1, route2]
+
+for stop in stops:
+    stop.set_routes(routes)
+
 bus1 = Bus("Happy bus", 10, route1, [1, 10, 15, 2])
 bus2 = Bus("Unhappy bus", 10, route2, [1, 10, 2])
 
 
-Thread(target = simulation.run_simulation, args=([bus1, bus2], [route1, route2])).start()
+Thread(target = simulation.run_simulation, args=([bus1, bus2], routes)).start()
 
 print("drawering")
 drawer = Drawer([route1, route2], [bus1, bus2])

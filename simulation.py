@@ -11,6 +11,11 @@ class BusStop:
         self.y = y
         self.waiting_people = []
 
+        self.routes = []
+
+    def set_routes(self, routes):
+        self.routes = routes
+
     def add_person(self, person):
         self.waiting_people.append(person)
 
@@ -28,6 +33,8 @@ class Person:
         self.source = source
         self.destination = destination
 
+        self.exit_stop = destination
+
     def enter_bus(self, bus, busStop):
         print("{} entering bus {} at bus stop {}".format(self.id, bus.id, busStop.name))
 
@@ -35,10 +42,20 @@ class Person:
         print("{} leaving bus {} at bus stop {}".format(self.id, bus.id, busStop.name))
 
     def wants_to_enter(self, bus):
-        return True
+        if self.destination in bus.next_stops():
+            return True
+
+        for stop in bus.next_stops():
+            for route in stop.routes:
+                if self.destination in route:
+                    self.exit_stop = stop
+                    return True
+        return False
 
     def wants_to_leave(self, busStop):
-        return busStop is self.destination
+        print("stop " + str(busStop))
+        print(self.exit_stop)
+        return busStop is self.exit_stop
 
 
 # route_times format - [time_of_staying_on_first_stop, time between 0 and 1 stop, ..., time_of_staying_on_last_stop]
@@ -61,13 +78,22 @@ class Bus:
     def free_places(self):
         return self.capacity - len(self.passengers)
 
+    def next_stops(self):
+        if self.current_direction > 0:
+            return self.route[self.current_stop:]
+        else:
+            return self.route[0:self.current_stop]
+
+    def __current_stop(self):
+        return self.route[self.current_stop]
+
     def run(self, env):
         while True:
             # leave people on current stop
-            leaving_people = [passenger for passenger in self.passengers if passenger.wants_to_leave(self.current_stop)]
+            leaving_people = [passenger for passenger in self.passengers if passenger.wants_to_leave(self.__current_stop())]
             for person in leaving_people:
-                person.leave_bus(self, self.route[self.current_stop])
-            self.passengers = [passenger for passenger in self.passengers if not passenger.wants_to_leave(self.current_stop)]
+                person.leave_bus(self, self.__current_stop())
+            self.passengers = [passenger for passenger in self.passengers if not passenger.wants_to_leave(self.__current_stop())]
             yield env.timeout(1 * FACTOR)
 
             # if its 0 or last stop - wait for a while
@@ -116,14 +142,17 @@ class PeopleSpawner():
     def __init__(self, routes):
         self.routes = routes
 
+        self.stops = []
+        for route in self.routes:
+            self.stops = self.stops + list(route)
+
     def run(self, env):
         while True:
-            for route in self.routes:
-                start_stop = randint(0, len(route) - 1)
-                last_stop = randint(0, len(route) - 1)
+                start_stop = self.stops[randint(0, len(self.stops) - 1)]
+                last_stop = self.stops[randint(0, len(self.stops) - 1)]
 
                 person = Person("name", start_stop, last_stop)
-                route[start_stop].add_person(person)
+                start_stop.add_person(person)
                 yield env.timeout(1 * FACTOR)
 
 
