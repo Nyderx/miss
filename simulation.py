@@ -139,27 +139,33 @@ class Bus:
             yield env.timeout(1)
 
 class PeopleSpawner():
-    def __init__(self, routes):
-        self.routes = routes
-
-        self.stops = []
-        for route in self.routes:
-            self.stops = self.stops + list(route)
+    def __init__(self, stops, spawning_functions):
+        self.stops = stops
+        self.spawning_functions = spawning_functions
 
     def run(self, env):
         while True:
-                start_stop = self.stops[randint(0, len(self.stops) - 1)]
-                last_stop = self.stops[randint(0, len(self.stops) - 1)]
+            for stop in self.stops:
+                if(self.spawning_functions[stop](env.now)):
+                    start_stop = stop
+                    last_stop = stop
+                    while last_stop is stop:
+                        last_stop = self.stops[randint(0, len(self.stops) - 1)]
 
-                person = Person("name", start_stop, last_stop)
-                start_stop.add_person(person)
+                    person = Person("name", start_stop, last_stop)
+                    start_stop.add_person(person)
                 yield env.timeout(1 * FACTOR)
 
 
 
-def run_simulation(buses, routes):
+def run_simulation(buses, routes, spawning_functions):
     env = simpy.rt.RealtimeEnvironment(factor=1/FACTOR)
-    spawner = PeopleSpawner(routes)
+
+    stops = []
+    for route in routes:
+        for stop in route:
+            stops.append(stop)
+    spawner = PeopleSpawner(stops, spawning_functions)
 
     for bus in buses:
         env.process(bus.run(env))

@@ -1,7 +1,7 @@
 from threading import Thread
 from tkinter import *
 from utils import *
-import time
+from spawning_functions import *
 
 import simulation
 from simulation import BusStop, Bus
@@ -101,6 +101,13 @@ bus_stop5 = BusStop(0, "Bieżanowska", 400, 500)
 
 stops = [bus_stop1, bus_stop2, bus_stop3, bus_stop4, bus_stop5]
 
+spawning_func= {}
+spawning_func[bus_stop1] = standard_center_function
+spawning_func[bus_stop2] = standard_center_function
+spawning_func[bus_stop3] = standard_center_function
+spawning_func[bus_stop4] = standard_suburbs_function
+spawning_func[bus_stop5] = standard_suburbs_function
+
 route1 = (bus_stop1, bus_stop2, bus_stop3)
 route2 = (bus_stop4, bus_stop2, bus_stop5)
 
@@ -113,7 +120,7 @@ bus1 = Bus("Happy bus", 10, route1, [1, 10, 15, 2])
 bus2 = Bus("Unhappy bus", 10, route2, [1, 10, 2])
 
 
-Thread(target = simulation.run_simulation, args=([bus1, bus2], routes)).start()
+Thread(target = simulation.run_simulation, args=([bus1, bus2], routes, spawning_func)).start()
 
 print("drawering")
 drawer = Drawer([route1, route2], [bus1, bus2])
